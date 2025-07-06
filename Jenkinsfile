@@ -8,20 +8,18 @@ pipeline {
         POSTGRES_DB = 'mydatabase'
         POSTGRES_USER = 'myuser'
         POSTGRES_PASSWORD = 'mypassword'
-        // For SonarQube and Nexus, you'd add similar variables
-        SONAR_TOKEN = credentials('sonarqube-token') // Example for Jenkins credentials
-        NEXUS_USER = credentials('nexus-user')
-        NEXUS_PASSWORD = credentials('nexus-password')
+        // For SonarQube, you'd add similar variables
+        // SONAR_TOKEN = credentials('sonarqube-token') // Example for Jenkins credentials
     }
 
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'master', url: 'https://github.com/nassifhamza/FASTAPIPROJECT.git'
+                git branch: 'master', url: 'https://github.com/nassifhamza/FASTAPIPROJECT'
             }
         }
 
-        stage('Build Backend') {
+        stage('Build Backend' ) {
             steps {
                 script {
                     // Navigate to the backend directory
@@ -46,7 +44,7 @@ pipeline {
             }
         }
 
-                stage("SonarQube Analysis") {
+        stage("SonarQube Analysis") {
             steps {
                 script {
                     // Ensure SonarQube Scanner is installed in Jenkins
@@ -63,7 +61,7 @@ pipeline {
             }
         }
 
-        // Optional: Build Frontend (if applicable)
+        // Optional: Build Frontend (if applicable )
         // stage('Build Frontend') {
         //     steps {
         //         script {
@@ -75,13 +73,15 @@ pipeline {
         //     }
         // }
 
-                stage("Push to Nexus") {
+        stage("Push to Nexus") {
             steps {
                 script {
-                    // Example for Docker image
-                    sh 'docker tag fastapi-backend nexus.devops.local:8081/fastapi-backend:latest'
-                    sh 'docker login -u admin -p admin123 nexus.devops.local:8081'
-                    sh 'docker push nexus.devops.local:8081/fastapi-backend:latest'
+                    // Use withCredentials to securely access Nexus credentials
+                    withCredentials([usernamePassword(credentialsId: 'nexus-user', usernameVariable: 'NEXUS_USERNAME', passwordVariable: 'NEXUS_PASSWORD')]) {
+                        sh 'docker tag fastapi-backend nexus.devops.local:8081/fastapi-backend:latest'
+                        sh "docker login -u ${NEXUS_USERNAME} -p ${NEXUS_PASSWORD} nexus.devops.local:8081"
+                        sh 'docker push nexus.devops.local:8081/fastapi-backend:latest'
+                    }
                 }
             }
         }
