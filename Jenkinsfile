@@ -1,16 +1,12 @@
-// Jenkinsfile for FastAPI Full Stack Template with Buildx fix
 pipeline {
     agent any
 
     environment {
-        // Define environment variables
         POSTGRES_DB = 'mydatabase'
         POSTGRES_USER = 'myuser'
         POSTGRES_PASSWORD = 'mypassword'
         NEXUS_REGISTRY = "nexus.devops.local:8081"
-        
-        // Disable BuildKit since buildx is missing
-        DOCKER_BUILDKIT = "0"
+        DOCKER_BUILDKIT = "1"
     }
 
     stages {
@@ -23,7 +19,6 @@ pipeline {
         stage('Install Buildx') {
             steps {
                 script {
-                    // Install buildx plugin
                     sh '''
                         mkdir -p ~/.docker/cli-plugins
                         curl -sSL https://github.com/docker/buildx/releases/download/v0.13.0/buildx-v0.13.0.linux-amd64 -o ~/.docker/cli-plugins/docker-buildx
@@ -38,10 +33,7 @@ pipeline {
             steps {
                 script {
                     dir('backend') {
-                        // Re-enable BuildKit now that buildx is installed
-                        sh '''
-                            DOCKER_BUILDKIT=1 docker build -t fastapi-backend .
-                        '''
+                        sh 'docker build -t fastapi-backend .'
                     }
                 }
             }
@@ -51,7 +43,8 @@ pipeline {
             steps {
                 script {
                     dir('backend') {
-                        sh 'docker run --rm -v $(pwd):/app -w /app fastapi-backend bash -c "uv sync && bash scripts/test.sh"'
+                        // Run tests directly on the built image
+                        sh 'docker run --rm fastapi-backend bash scripts/test.sh'
                     }
                 }
             }
@@ -64,7 +57,7 @@ pipeline {
                         sh '''
                             sonar-scanner \
                             -Dsonar.projectKey=fastapi-project \
-                            -Dsonar.sources=backend/app \
+                            -Dsonar.sources=app \
                             -Dsonar.host.url=http://sonarqube:9000 \
                             -Dsonar.login=${SONAR_TOKEN}
                         '''
@@ -97,7 +90,6 @@ pipeline {
     post {
         always {
             echo 'Pipeline finished.'
-            // Clean up Docker images
             sh 'docker rmi fastapi-backend || true'
             sh "docker rmi ${NEXUS_REGISTRY}/fastapi-backend:latest || true"
         }
@@ -106,11 +98,10 @@ pipeline {
         }
         failure {
             echo 'Pipeline failed!'
-            // Send notification on failure
             emailext (
                 subject: "FAILED: Job '${env.JOB_NAME}' (${env.BUILD_NUMBER})",
                 body: "Check console output at ${env.BUILD_URL}",
-                to: 'abn.nassif@gmail.com'
+                to: 'hamza@example.com'
             )
         }
     }
