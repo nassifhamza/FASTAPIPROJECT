@@ -1,16 +1,16 @@
-// Jenkinsfile for FastAPI Full Stack Template with BuildKit fix
+// Jenkinsfile for FastAPI Full Stack Template with Buildx fix
 pipeline {
     agent any
 
     environment {
-        // Define environment variables for your services
+        // Define environment variables
         POSTGRES_DB = 'mydatabase'
         POSTGRES_USER = 'myuser'
         POSTGRES_PASSWORD = 'mypassword'
-        // Enable BuildKit globally for all Docker commands
-        DOCKER_BUILDKIT = "1"
-        // Nexus repository URL (configurable)
         NEXUS_REGISTRY = "nexus.devops.local:8081"
+        
+        // Disable BuildKit since buildx is missing
+        DOCKER_BUILDKIT = "0"
     }
 
     stages {
@@ -20,12 +20,28 @@ pipeline {
             }
         }
 
+        stage('Install Buildx') {
+            steps {
+                script {
+                    // Install buildx plugin
+                    sh '''
+                        mkdir -p ~/.docker/cli-plugins
+                        curl -sSL https://github.com/docker/buildx/releases/download/v0.13.0/buildx-v0.13.0.linux-amd64 -o ~/.docker/cli-plugins/docker-buildx
+                        chmod +x ~/.docker/cli-plugins/docker-buildx
+                        docker buildx version
+                    '''
+                }
+            }
+        }
+
         stage('Build Backend') {
             steps {
                 script {
                     dir('backend') {
-                        // Build with BuildKit explicitly enabled
-                        sh 'docker build -t fastapi-backend .'
+                        // Re-enable BuildKit now that buildx is installed
+                        sh '''
+                            DOCKER_BUILDKIT=1 docker build -t fastapi-backend .
+                        '''
                     }
                 }
             }
@@ -35,7 +51,6 @@ pipeline {
             steps {
                 script {
                     dir('backend') {
-                        // Run tests in Docker container
                         sh 'docker run --rm -v $(pwd):/app -w /app fastapi-backend bash -c "uv sync && bash scripts/test.sh"'
                     }
                 }
@@ -45,7 +60,6 @@ pipeline {
         stage("SonarQube Analysis") {
             steps {
                 script {
-                    // Use Jenkins-configured SonarQube server
                     withSonarQubeEnv(credentialsId: 'sonarqube-token', installationName: 'SonarQube') {
                         sh '''
                             sonar-scanner \
@@ -78,20 +92,12 @@ pipeline {
                 }
             }
         }
-
-        // Optional: Deployment Stage
-        // stage('Deploy') {
-        //     steps {
-        //         echo 'Deploying application...'
-        //         // Add your deployment commands here
-        //     }
-        // }
     }
 
     post {
         always {
             echo 'Pipeline finished.'
-            // Clean up Docker images to save disk space
+            // Clean up Docker images
             sh 'docker rmi fastapi-backend || true'
             sh "docker rmi ${NEXUS_REGISTRY}/fastapi-backend:latest || true"
         }
@@ -100,7 +106,12 @@ pipeline {
         }
         failure {
             echo 'Pipeline failed!'
-            // Optional: Send notification on failure
+            // Send notification on failure
+            emailext (
+                subject: "FAILED: Job '${env.JOB_NAME}' (${env.BUILD_NUMBER})",
+                body: "Check console output at ${env.BUILD_URL}",
+                to: 'hamza@example.com'
+            )
         }
     }
 }
